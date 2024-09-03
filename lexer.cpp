@@ -124,7 +124,7 @@ Node *Lexer::read_token() {
     return read_continued_token(TOK_INTEGER_LITERAL, lexeme, line, col, isdigit);
   } else {
     // Handle possible multi-character tokens and other single characters
-    return handle_possible_multi_char_token(c, lexeme, line, col);
+    return handle_token(c, lexeme, line, col);
   }
 }
 
@@ -156,37 +156,92 @@ Node *Lexer::read_continued_token(enum TokenKind kind, const std::string &lexeme
 }
 
 // TODO: implement additional member functions if necessary
-Node *Lexer::handle_possible_multi_char_token(int c, std::string &lexeme, int line, int col) {
+
+// Helper function to handle identifiers or keywords
+Node *Lexer::handle_identifier_or_keyword(int c, std::string &lexeme, int line, int col) {
+  Node *tok = read_continued_token(TOK_IDENTIFIER, lexeme, line, col, isalnum);
+
+  // Check if the lexeme is a keyword
+  if (lexeme == "var") {
+    return token_create(TOK_VAR, lexeme, line, col);
+  }
+
+  return tok;
+}
+
+
+Node *Lexer::handle_token(int c, std::string &lexeme, int line, int col) {
   switch (c) {
-  case '+':
-    return token_create(TOK_PLUS, lexeme, line, col);
-  case '-':
-    return token_create(TOK_MINUS, lexeme, line, col);
-  case '*':
-    return token_create(TOK_TIMES, lexeme, line, col);
-  case '/':
-    return token_create(TOK_DIVIDE, lexeme, line, col);
-  case '(':
-    return token_create(TOK_LPAREN, lexeme, line, col);
-  case ')':
-    return token_create(TOK_RPAREN, lexeme, line, col);
-  case ';':
-    return token_create(TOK_SEMICOLON, lexeme, line, col);
-  case '&': 
-    return check_and_create_double_char_token('&', TOK_DOUBLE_AMPERSAND, lexeme, line, col);
-  case '|':
-    return check_and_create_double_char_token('|', TOK_DOUBLE_PIPE, lexeme, line, col);
-  case '=':
-    return check_and_create_double_char_token('=', TOK_DOUBLE_EQUAL, TOK_EQUAL, lexeme, line, col);
-  case '<':
-    return check_and_create_double_char_token('=', TOK_LESS_EQUAL, TOK_LESS, lexeme, line, col);
-  case '>':
-    return check_and_create_double_char_token('=', TOK_GREATER_EQUAL, TOK_GREATER, lexeme, line, col);
-  case '!':
-    return check_and_create_double_char_token('=', TOK_NOT_EQUAL, TOK_EXCLAMATION, lexeme, line, col);
-  default:
-    SyntaxError::raise(get_current_loc(), "Unrecognized character '%c'", c);
-    return nullptr;
+    case '+':
+      return token_create(TOK_PLUS, lexeme, line, col);
+    case '-':
+      return token_create(TOK_MINUS, lexeme, line, col);
+    case '*':
+      return token_create(TOK_TIMES, lexeme, line, col);
+    case '/':
+      return token_create(TOK_DIVIDE, lexeme, line, col);
+    case '(':
+      return token_create(TOK_LPAREN, lexeme, line, col);
+    case ')':
+      return token_create(TOK_RPAREN, lexeme, line, col);
+    case ';':
+      return token_create(TOK_SEMICOLON, lexeme, line, col);
+    case '&': {
+      Node *token = check_and_create_double_char_token('&', TOK_DOUBLE_AMPERSAND, lexeme, line, col);
+      if (token) return token;
+      SyntaxError::raise(get_current_loc(), "Unexpected character '&' (expected '&&')");
+      return nullptr;
+    }
+    case '|': {
+      Node *token = check_and_create_double_char_token('|', TOK_DOUBLE_PIPE, lexeme, line, col);
+      if (token) return token;
+      SyntaxError::raise(get_current_loc(), "Unexpected character '|' (expected '||')");
+      return nullptr;
+    }
+    case '=': {
+      int next_char = read();
+      if (next_char == '=') {
+        lexeme.push_back(char(next_char));
+        return token_create(TOK_DOUBLE_EQUAL, lexeme, line, col);
+      } else {
+        unread(next_char);
+        return token_create(TOK_EQUAL, lexeme, line, col);
+      }
+    }
+    case '<': {
+      int next_char = read();
+      if (next_char == '=') {
+        lexeme.push_back(char(next_char));
+        return token_create(TOK_LESS_EQUAL, lexeme, line, col);
+      } else {
+        unread(next_char);
+        return token_create(TOK_LESS, lexeme, line, col);
+      }
+    }
+    case '>': {
+      int next_char = read();
+      if (next_char == '=') {
+        lexeme.push_back(char(next_char));
+        return token_create(TOK_GREATER_EQUAL, lexeme, line, col);
+      } else {
+        unread(next_char);
+        return token_create(TOK_GREATER, lexeme, line, col);
+      }
+    }
+    case '!': {
+      int next_char = read();
+      if (next_char == '=') {
+        lexeme.push_back(char(next_char));
+        return token_create(TOK_NOT_EQUAL, lexeme, line, col);
+      } else {
+        unread(next_char);
+        SyntaxError::raise(get_current_loc(), "Unexpected character '!' (expected '!=')");
+        return nullptr;
+      }
+    }
+    default:
+      SyntaxError::raise(get_current_loc(), "Unrecognized character '%c'", c);
+      return nullptr;
   }
 }
 
@@ -197,25 +252,7 @@ Node *Lexer::check_and_create_double_char_token(char expected_next, TokenKind do
     return token_create(double_kind, lexeme, line, col);
   } else {
     unread(next_char);
-
-    // Raise an error if a single '&' or '|' is encountered
-    if (expected_next == '&' || expected_next == '|') {
-      SyntaxError::raise(get_current_loc(), "Unexpected character '%c' (expected '%c%c')", char(expected_next), char(expected_next), char(expected_next));
-    }
-
-    // This code should only be reachable for '=', '<', '>', and '!'
-    TokenKind single_kind;
-    switch (expected_next) {
-      case '=': single_kind = TOK_EQUAL; break;
-      case '<': single_kind = TOK_LESS; break;
-      case '>': single_kind = TOK_GREATER; break;
-      case '!': single_kind = TOK_EXCLAMATION; break;
-      default: 
-        // This case should not be hit due to initial checks
-        SyntaxError::raise(get_current_loc(), "Unexpected character '%c'", expected_next);
-        return nullptr;
-    }
-
-    return token_create(single_kind, lexeme, line, col);
+    // Return nullptr when the double-character token is not formed.
+    return nullptr;
   }
 }

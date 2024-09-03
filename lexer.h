@@ -39,7 +39,11 @@ private:
   Node *read_token();
   Node *token_create(enum TokenKind kind, const std::string &lexeme, int line, int col);
   Node *read_continued_token(enum TokenKind kind, const std::string &lexeme_start, int line, int col, int (*pred)(int));
-  // TODO: add additional member functions if necessary
+
+  // Helper function declarations
+  Node *handle_identifier_or_keyword(int c, std::string &lexeme, int line, int col);
+  Node *handle_token(int c, std::string &lexeme, int line, int col);
+  Node *check_and_create_double_char_token(char expected_next, TokenKind double_kind, std::string &lexeme, int line, int col);
 };
 
 #endif // LEXER_H
