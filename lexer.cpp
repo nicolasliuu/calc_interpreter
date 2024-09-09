@@ -6,6 +6,7 @@
 #include "token.h"
 #include "exceptions.h"
 #include "lexer.h"
+#include <iostream>
 
 ////////////////////////////////////////////////////////////////////////
 // Lexer implementation
@@ -118,6 +119,7 @@ Node *Lexer::read_token() {
 
   if (isalpha(c)) {
     // Handle identifiers and keywords
+    
     return handle_identifier_or_keyword(c, lexeme, line, col);
   } else if (isdigit(c)) {
     // Handle integer literals
@@ -159,16 +161,17 @@ Node *Lexer::read_continued_token(enum TokenKind kind, const std::string &lexeme
 
 // Helper function to handle identifiers or keywords
 Node *Lexer::handle_identifier_or_keyword(int c, std::string &lexeme, int line, int col) {
+  // Read the full identifier or keyword (consisting of alphanumeric characters)
   Node *tok = read_continued_token(TOK_IDENTIFIER, lexeme, line, col, isalnum);
 
-  // Check if the lexeme is a keyword
-  if (lexeme == "var") {
-    return token_create(TOK_VAR, lexeme, line, col);
+  // Check if "var"
+  if (tok->get_str() == "var") {
+    return token_create(TOK_VAR, tok->get_str(), line, col);  // Return a new TOK_VAR token if it's "var"
   }
 
+  // Otherwise, just return the token as an identifier
   return tok;
 }
-
 
 Node *Lexer::handle_token(int c, std::string &lexeme, int line, int col) {
   switch (c) {

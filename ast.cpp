@@ -26,6 +26,26 @@ std::string ASTTreePrint::node_tag_to_string(int tag) const {
   case AST_STATEMENT:
     return "STATEMENT";
   // TODO: add cases for other AST node kinds
+  case AST_VARDEF: 
+    return "VARDEF";
+  case AST_ASSIGN: 
+    return "ASSIGN";
+  case AST_LOGICAL_OR: 
+    return "LOGICAL_OR";
+  case AST_LOGICAL_AND: 
+    return "LOGICAL_AND";
+  case AST_LESS: 
+    return "LESS";
+  case AST_LESS_EQUAL: 
+    return "LESS_EQUAL";
+  case AST_GREATER: 
+    return "GREATER";
+  case AST_GREATER_EQUAL: 
+    return "GREATER_EQUAL";
+  case AST_EQUAL: 
+    return "EQUAL";
+  case AST_NOT_EQUAL: 
+    return "NOT_EQUAL";
   default:
     RuntimeError::raise("Unknown AST node type %d\n", tag);
   }

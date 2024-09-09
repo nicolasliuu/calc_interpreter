@@ -6,6 +6,7 @@
 #include "ast.h"
 #include "exceptions.h"
 #include "parser2.h"
+#include <iostream>
 
 ////////////////////////////////////////////////////////////////////////
 // Parser2 implementation
@@ -57,19 +58,40 @@ Node *Parser2::parse_Unit() {
 }
 
 Node *Parser2::parse_Stmt() {
-  // Stmt -> ^ E ;
+  std::unique_ptr<Node> stmt(new Node(AST_STATEMENT));
 
-  std::unique_ptr<Node> s(new Node(AST_STATEMENT));
-
+  // Peek at the next token to decide what kind of statement we are parsing
   Node *next_tok = m_lexer->peek();
   if (next_tok == nullptr) {
     SyntaxError::raise(m_lexer->get_current_loc(), "Unexpected end of input looking for statement");
   }
 
-  s->append_kid(parse_E());
-  expect_and_discard(TOK_SEMICOLON);
+  // Check if the next token is 'var' (indicating a variable declaration)
+  if (next_tok->get_tag() == TOK_VAR) {
+    // Stmt → var ident ;
+    std::unique_ptr<Node> var_decl(expect(TOK_VAR));       // Consume 'var'
+    std::unique_ptr<Node> ident(expect(TOK_IDENTIFIER));   // Consume identifier (e.g., 'a')
+    
+    // Create an AST_VARREF node for the variable reference
+    std::unique_ptr<Node> var_ref(new Node(AST_VARREF));
+    var_ref->set_str(ident->get_str());                    // Set the identifier string
+    var_ref->set_loc(ident->get_loc());                    // Set the location info
 
-  return s.release();
+    expect_and_discard(TOK_SEMICOLON);                     // Consume ';'
+
+    // Create the AST_VARDEF node and append the VARREF node as a child
+    std::unique_ptr<Node> var_def_node(new Node(AST_VARDEF, {var_ref.release()}));
+    var_def_node->set_loc(var_decl->get_loc());            // Set the location to 'var'
+    stmt->append_kid(var_def_node.release());              // Append the variable definition node to the statement
+
+  } else {
+    // Handle other statements, like assignments or expressions
+    // Stmt → A ;
+    stmt->append_kid(parse_A());                           // Parse the A non-terminal (assignment or expression)
+    expect_and_discard(TOK_SEMICOLON);                     // Consume the semicolon at the end of the statement
+  }
+
+  return stmt.release();  // Return the constructed statement node
 }
 
 Node *Parser2::parse_E() {
@@ -183,7 +205,8 @@ Node *Parser2::parse_F() {
   } else if (tag == TOK_LPAREN) {
     // F -> ^ ( E )
     expect_and_discard(TOK_LPAREN);
-    std::unique_ptr<Node> ast(parse_E());
+    // std::unique_ptr<Node> ast(parse_E());
+    std::unique_ptr<Node> ast(parse_A()); // F -> ( A ) instead of ( E )
     expect_and_discard(TOK_RPAREN);
     return ast.release();
   } else {
@@ -210,22 +233,87 @@ Node *Parser2::parse_A() {
   // A    → ident = A
   // A    → L
   Node *next_tok = m_lexer->peek();
-  if (next_tok != nullptr) {
-    error_at_current_loc("Unexpected end of input looking for primary expression");
+  if (next_tok == nullptr) {
+    error_at_current_loc("Unexpected end of input looking for assignment or expression");
   }
 
   if (next_tok->get_tag() == TOK_IDENTIFIER) {
-    // A → ident = A
-    std::unique_ptr<Node> ident(expect(TOK_IDENTIFIER));
-    Node *next_next_tok = m_lexer->peek();
-    if (next_next_tok && next_next_tok->get_tag() == TOK_EQUAL) {
-      std::unique_ptr<Node> assign_op(expect(TOK_EQUAL));
-      std::unique_ptr<Node> rhs(parse_A()); // Recursive call for rhs of assignment
-      std::unique_ptr<Node> assign_node(new Node(AST_ASSIGN, {ident.release(), rhs.release()}));
-      assign_node->set_loc(assign_op->get_loc());
+    // Peek two tokens ahead to check for the assignment operator (`=`)
+    Node *next_next_tok = m_lexer->peek(2);
+    
+    if (next_next_tok != nullptr && next_next_tok->get_tag() == TOK_EQUAL) {
+      // If the second token is '=', it's an assignment: A → ident = A
+      std::unique_ptr<Node> ident(expect(TOK_IDENTIFIER));  // Consume identifier
+      
+      // Create an AST_VARREF node for the left-hand side variable reference
+      std::unique_ptr<Node> var_ref(new Node(AST_VARREF));
+      var_ref->set_str(ident->get_str());
+      var_ref->set_loc(ident->get_loc());
+      
+      std::unique_ptr<Node> assign_op(expect(TOK_EQUAL));   // Consume '='
+      std::unique_ptr<Node> rhs(parse_A());                 // Parse the right-hand side of the assignment
+
+      // Create AST node for assignment operation
+      std::unique_ptr<Node> assign_node(new Node(AST_ASSIGN, {var_ref.release(), rhs.release()}));
+      assign_node->set_loc(assign_op->get_loc());            // Set location info from the assignment operator
       return assign_node.release();
-    } 
+    }
   }
+
+  return parse_L(); // Not an assignment, so handle it as an expression
+}
+
+
+Node *Parser2::parse_L() {
+  // L    → R || R
+  // L    → R && R
+  // L    → R
+  std::unique_ptr<Node> ast(parse_R());
+
+  Node *next_tok = m_lexer->peek();
+  if (next_tok != nullptr) {
+    if (next_tok->get_tag() == TOK_DOUBLE_PIPE || next_tok->get_tag() == TOK_DOUBLE_AMPERSAND) {
+      std::unique_ptr<Node> logical_op(expect(next_tok->get_tag() == TOK_DOUBLE_PIPE ? TOK_DOUBLE_PIPE : TOK_DOUBLE_AMPERSAND));
+      std::unique_ptr<Node> rhs(parse_R());
+      int ast_tag = (next_tok->get_tag() == TOK_DOUBLE_PIPE) ? AST_LOGICAL_OR : AST_LOGICAL_AND;
+      std::unique_ptr<Node> logical_node(new Node(ast_tag, {ast.release(), rhs.release()}));
+      logical_node->set_loc(logical_op->get_loc());
+      return logical_node.release();
+    }
+  }
+
+  return ast.release();
+}
+
+Node *Parser2::parse_R() {
+  std::unique_ptr<Node> ast(parse_E());
+
+  Node *next_tok = m_lexer->peek();
+
+  if (next_tok != nullptr) {
+    int tok_tag = next_tok->get_tag();
+    if (tok_tag == TOK_LESS || tok_tag == TOK_LESS_EQUAL || tok_tag == TOK_GREATER || tok_tag == TOK_GREATER_EQUAL || 
+        tok_tag == TOK_DOUBLE_EQUAL || tok_tag == TOK_NOT_EQUAL) {
+      std::unique_ptr<Node> rel_op(expect(static_cast<TokenKind>(tok_tag)));
+      std::unique_ptr<Node> rhs(parse_E());
+      int ast_tag; 
+      switch (tok_tag) {
+        case TOK_LESS: ast_tag = AST_LESS; break;
+        case TOK_LESS_EQUAL: ast_tag = AST_LESS_EQUAL; break;
+        case TOK_GREATER: ast_tag = AST_GREATER; break;
+        case TOK_GREATER_EQUAL: ast_tag = AST_GREATER_EQUAL; break;
+        case TOK_DOUBLE_EQUAL: ast_tag = AST_EQUAL; break;
+        case TOK_NOT_EQUAL: ast_tag = AST_NOT_EQUAL; break;
+        default: error_at_current_loc("Unexpected relational operator");
+      } 
+
+      std::unique_ptr<Node> rel_node(new Node(ast_tag, {ast.release(), rhs.release()}));
+      rel_node->set_loc(rel_op->get_loc());
+      return rel_node.release();
+    }
+  }
+
+  return ast.release();
 }
 
 Node *Parser2::expect(enum TokenKind tok_kind) {
