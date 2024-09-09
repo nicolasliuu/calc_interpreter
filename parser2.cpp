@@ -191,6 +191,43 @@ Node *Parser2::parse_F() {
   }
 }
 
+// TODO: Parse the following productions: 
+// Stmt → var ident ;
+// A    → ident = A
+// A    → L
+// L    → R || R
+// L    → R && R
+// L    → R
+// R    → E < E
+// R    → E <= E
+// R    → E > E
+// R    → E >= E
+// R    → E == E
+// R    → E != E
+// R    → E
+
+Node *Parser2::parse_A() {
+  // A    → ident = A
+  // A    → L
+  Node *next_tok = m_lexer->peek();
+  if (next_tok != nullptr) {
+    error_at_current_loc("Unexpected end of input looking for primary expression");
+  }
+
+  if (next_tok->get_tag() == TOK_IDENTIFIER) {
+    // A → ident = A
+    std::unique_ptr<Node> ident(expect(TOK_IDENTIFIER));
+    Node *next_next_tok = m_lexer->peek();
+    if (next_next_tok && next_next_tok->get_tag() == TOK_EQUAL) {
+      std::unique_ptr<Node> assign_op(expect(TOK_EQUAL));
+      std::unique_ptr<Node> rhs(parse_A()); // Recursive call for rhs of assignment
+      std::unique_ptr<Node> assign_node(new Node(AST_ASSIGN, {ident.release(), rhs.release()}));
+      assign_node->set_loc(assign_op->get_loc());
+      return assign_node.release();
+    } 
+  }
+}
+
 Node *Parser2::expect(enum TokenKind tok_kind) {
   std::unique_ptr<Node> next_terminal(m_lexer->next());
   if (next_terminal->get_tag() != tok_kind) {
