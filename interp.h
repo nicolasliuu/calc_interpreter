@@ -9,16 +9,22 @@ class Location;
 class Interpreter {
 private:
   Node *m_ast;
+  Environment m_env;
 
 public:
   Interpreter(Node *ast_to_adopt);
+  Interpreter(Node *ast_to_adopt, Environment env);
   ~Interpreter();
 
   void analyze();
   Value execute();
 
 private:
-  // TODO: private member functions
+    // Helper functions for analysis
+    void analyze_node(Node* node, Environment& env);
+
+    // Helper functions for execution
+    Value evaluate(Node* node);
 };
 
 #endif // INTERP_H

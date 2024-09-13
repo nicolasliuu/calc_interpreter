@@ -1,4 +1,5 @@
 #include "environment.h"
+#include "exceptions.h"
 
 Environment::Environment(Environment *parent)
   : m_parent(parent) {
@@ -7,16 +8,9 @@ Environment::Environment(Environment *parent)
 
 Environment::~Environment() {
 }
-
-//Define a new variable with an initial value
+// Define a new variable with an initial value
 void Environment::define_variable(const std::string& name, const Value& value) {
-  // Check if the variable is already defined
-  if (variables.find(name) != variables.end()) {
-    return;
-  }
-
-  // Insert new variable to the map
-  variables[name] = value;
+    variables[name] = value;
 }
 
 // Check if a variable is defined (in current or parent environments)
@@ -25,7 +19,7 @@ bool Environment::is_defined(const std::string& name) const {
     if (variables.find(name) != variables.end()) {
         return true;
     }
-    // Check parent (but if only global environment, return false)
+    // If not found and there's a parent environment, check recursively
     if (m_parent != nullptr) {
         return m_parent->is_defined(name);
     }
@@ -33,23 +27,15 @@ bool Environment::is_defined(const std::string& name) const {
     return false;
 }
 
-// Get the value of a variable (searches current and parent environments)
 Value Environment::get_variable(const std::string& name) const {
     // Look for the variable in the current environment
     auto it = variables.find(name);
     if (it != variables.end()) {
         return it->second;
     }
-    // If not found and there's a parent environment, search recursively
-    if (m_parent != nullptr) {
-        return m_parent->get_variable(name);
-    }
-    // Variable not found; raise a semantic error
-    SemanticError::raise("Variable '%s' is not defined.", name.c_str());
-    return Value(0); // Unreachable, but avoids compiler warnings
+    return Value(0); // Return a default value, but Interpreter should ensure this never happens
 }
 
-// Set the value of an existing variable (searches current and parent environments)
 void Environment::set_variable(const std::string& name, const Value& value) {
     // Look for the variable in the current environment
     auto it = variables.find(name);
@@ -57,11 +43,5 @@ void Environment::set_variable(const std::string& name, const Value& value) {
         it->second = value;
         return;
     }
-    // If not found and there's a parent environment, search recursively
-    if (m_parent != nullptr) {
-        m_parent->set_variable(name, value);
-        return;
-    }
-    // Variable not found; raise a semantic error
-    SemanticError::raise("Variable '%s' is not defined.", name.c_str());
+    // In this case, we do nothing, but the Interpreter should ensure this never happens
 }
